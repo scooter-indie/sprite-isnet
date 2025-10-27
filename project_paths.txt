@@ -1,0 +1,6 @@
+# Project Configuration 
+PROJECT_ROOT=E:\Projects\sprite-isnet 
+DATA_ROOT=E:\Projects\sprite-data 
+MODELS_DIR=E:\Projects\sprite-isnet\saved_models\sprite-isnet 
+LOGS_DIR=E:\Projects\sprite-isnet\logs 
+ONNX_DIR=E:\Projects\sprite-isnet\onnx_models 
