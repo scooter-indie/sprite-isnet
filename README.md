@@ -1,5 +1,3 @@
-Now I have enough information to create a comprehensive README.md. Let me create it:
-
 # Sprite IS-Net: Custom Background Removal for Sprite Sheets
 
 [![Python](https://img.shields.io/badge/Python-3.7%2B-blue.svg)](https://www.python.org/downloads/)
