@@ -7,7 +7,7 @@ require 'fileutils'
 require 'set'
 
 class SpritesheetPrepper
-  SUFFIX = "-processed"
+  SUFFIX = "-processed"  # Still used for temp files
   
   # Dark color range: RGB values 0-80 for darker spectrum
   DARK_COLOR_MAX = 80
@@ -103,7 +103,7 @@ class SpritesheetPrepper
     elsif options[:dir]
       if Dir.exist?(options[:dir])
         files = Dir.glob(File.join(options[:dir], "*.png"))
-        files.reject! { |f| f.include?(SUFFIX) } # Skip already processed files
+        # No longer skip processed files since we overwrite originals
       else
         abort "ERROR: Directory not found: #{options[:dir]}"
       end
@@ -113,6 +113,8 @@ class SpritesheetPrepper
   end
   
   def process_file(input_file)
+    temp_output = nil
+    
     begin
       # Check if file is valid PNG
       unless valid_png?(input_file)
@@ -138,29 +140,37 @@ class SpritesheetPrepper
       unique_colors = generate_unique_colors(existing_colors, transparent_regions)
       puts "  → Generated #{unique_colors.length} unique color(s): #{unique_colors.map { |c| format_color(c) }.join(', ')}"
       
-      # Create output filename
-      output_file = generate_output_filename(input_file)
+      # Create temporary output filename
+      temp_output = generate_temp_filename(input_file)
       
-      # Process the image
+      # Process the image to temp file
       puts "  → Replacing transparent pixels with unique colors..."
-      replace_transparent_pixels(input_file, output_file, unique_colors)
+      replace_transparent_pixels(input_file, temp_output, unique_colors)
       
       # Add alpha channel back
       puts "  → Restoring alpha channel..."
-      add_alpha_channel(output_file)
+      add_alpha_channel(temp_output)
       
-      # Verify output
-      if File.exist?(output_file)
-        puts "  ✓ SUCCESS: Created #{File.basename(output_file)}"
-        @stats[:files_processed] += 1
-      else
-        raise "Output file was not created"
+      # Verify temp output was created
+      unless File.exist?(temp_output)
+        raise "Temporary output file was not created"
       end
+      
+      # Replace original with processed version
+      puts "  → Saving to original filename..."
+      FileUtils.mv(temp_output, input_file)
+      temp_output = nil  # Clear since we've moved it
+      
+      puts "  ✓ SUCCESS: Processed #{File.basename(input_file)}"
+      @stats[:files_processed] += 1
       
     rescue => e
       puts "  ✗ ERROR: #{e.message}"
       @stats[:files_errored] += 1
       @stats[:errors] << { file: File.basename(input_file), error: e.message }
+      
+      # Clean up temp file if it exists
+      File.delete(temp_output) if temp_output && File.exist?(temp_output)
     end
   end
   
@@ -178,7 +188,6 @@ class SpritesheetPrepper
   def has_transparency?(file)
     # Check image type - look for "Alpha" in the type
     result = exec_magick("magick identify -format \"%[type]\" \"#{file}\"").strip
-    
     puts "  [DEBUG] Image type: '#{result}'" if ENV['DEBUG']
     
     # Check if it's a type with alpha channel
@@ -306,10 +315,12 @@ class SpritesheetPrepper
     "RGB(#{rgb[0]},#{rgb[1]},#{rgb[2]})"
   end
   
-  def generate_output_filename(input_file)
+  # MODIFIED: Generate temporary filename instead of output filename
+  def generate_temp_filename(input_file)
     dir = File.dirname(input_file)
     basename = File.basename(input_file, ".png")
-    File.join(dir, "#{basename}#{SUFFIX}.png")
+    # Use process ID to make it unique
+    File.join(dir, "#{basename}_temp_#{Process.pid}.png")
   end
   
   def replace_transparent_pixels(input_file, output_file, unique_colors)
@@ -357,7 +368,7 @@ class SpritesheetPrepper
     end
     
     if @stats[:files_processed] > 0
-      puts "✓ Processing complete! Check output files with '#{SUFFIX}' suffix."
+      puts "✓ Processing complete! Files have been updated in-place."
     end
     puts "=" * 70
   end
@@ -376,6 +387,7 @@ OptionParser.new do |opts|
   opts.banner = "Usage: ruby spritesheet_prep.rb [options]"
   opts.separator ""
   opts.separator "Process PNG spritesheets to replace transparency with unique dark colors"
+  opts.separator "NOTE: This will overwrite the original files!"
   opts.separator ""
   opts.separator "Required (mutually exclusive):"
   

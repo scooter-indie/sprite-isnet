@@ -23,14 +23,13 @@ class SpriteConfig:
     LOG_DIR = os.path.join(PROJECT_ROOT, 'logs')
     
     # Pretrained model path
-    PRETRAINED_MODEL = os.path.join(PROJECT_ROOT, 'DIS', 'saved_models', 
-                                    'IS-Net', 'isnet-general-use.pth')
+    PRETRAINED_MODEL = None
     
     # ===== Training Hyperparameters =====
     BATCH_SIZE = 4  # Reduce to 2 if GPU memory issues
     NUM_WORKERS = 4  # Number of data loading workers
-    EPOCHS = 200
-    LEARNING_RATE = 1e-4
+    EPOCHS = 400
+    LEARNING_RATE = 5e-5
     WEIGHT_DECAY = 0.0
     
     # Image settings
@@ -38,7 +37,7 @@ class SpriteConfig:
     # Common sprite sheet sizes: 512, 1024, 2048
     
     # ===== Model Settings =====
-    USE_PRETRAINED = True  # Transfer learning from general model
+    USE_PRETRAINED = False  # Transfer learning from general model
     FREEZE_ENCODER = False  # Set True to only train decoder (faster, less flexible)
     
     # ===== Optimization =====
@@ -72,7 +71,7 @@ class SpriteConfig:
     
     # ===== Early Stopping =====
     USE_EARLY_STOPPING = True
-    EARLY_STOPPING_PATIENCE = 30  # Stop if no improvement for N epochs
+    EARLY_STOPPING_PATIENCE = 50  # Stop if no improvement for N epochs
     
     @classmethod
     def ensure_dirs(cls):

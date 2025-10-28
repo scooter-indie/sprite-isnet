@@ -107,7 +107,7 @@ class SpriteTrainer:
         
         # Load pretrained weights if specified
         if config.USE_PRETRAINED:
-            if os.path.exists(config.PRETRAINED_MODEL):
+            if config.PRETRAINED_MODEL and os.path.exists(config.PRETRAINED_MODEL):
                 print(f"\nLoading pretrained model: {config.PRETRAINED_MODEL}")
                 pretrained_dict = torch.load(config.PRETRAINED_MODEL, 
                                             map_location=self.device)
@@ -119,8 +119,12 @@ class SpriteTrainer:
                 self.model.load_state_dict(pretrained_dict, strict=False)
                 print("✓ Pretrained weights loaded successfully")
             else:
-                print(f"\n⚠ Pretrained model not found: {config.PRETRAINED_MODEL}")
-                print("Training from scratch...")
+                print(f"\n⚠ Pretrained model not found or not specified")
+                print("Training from scratch with random initialization...")
+        else:
+            print("\n✓ Training from scratch - no pretrained weights")
+            print("  Model initialized with random weights")
+
         
         # Freeze encoder if specified
         if config.FREEZE_ENCODER:
