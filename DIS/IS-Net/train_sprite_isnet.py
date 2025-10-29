@@ -217,6 +217,16 @@ class SpriteTrainer:
             'valid_loss': [],
             'learning_rate': []
         }
+        # ADD THIS NEW CODE BLOCK:
+        # Check for existing checkpoint to resume from
+        latest_checkpoint = os.path.join(config.CHECKPOINT_DIR, 'sprite_isnet_latest.pth')
+        if config.RESUME and os.path.exists(config.RESUME_CHECKPOINT):
+            self.load_checkpoint(config.RESUME_CHECKPOINT)
+        elif os.path.exists(latest_checkpoint):
+            print(f"\n📂 Found existing checkpoint: {latest_checkpoint}")
+            response = input("Resume from this checkpoint? (y/n): ")
+            if response.lower() == 'y':
+                self.load_checkpoint(latest_checkpoint)
     
     def train_epoch(self, epoch):
         """Train for one epoch"""
@@ -366,7 +376,29 @@ class SpriteTrainer:
             'sprite_isnet_latest.pth'
         )
         torch.save(checkpoint, latest_path)
-    
+        
+    def load_checkpoint(self, checkpoint_path):
+        """Load checkpoint and resume training"""
+        print(f"Loading checkpoint: {checkpoint_path}")
+        checkpoint = torch.load(checkpoint_path, map_location=self.device)
+        
+        self.model.load_state_dict(checkpoint['model_state_dict'])
+        self.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+        
+        if self.scheduler and 'scheduler_state_dict' in checkpoint:
+            self.scheduler.load_state_dict(checkpoint['scheduler_state_dict'])
+        
+        self.start_epoch = checkpoint['epoch'] + 1
+        self.best_loss = checkpoint.get('best_loss', float('inf'))
+        self.training_history = checkpoint.get('training_history', {
+            'train_loss': [],
+            'valid_loss': [],
+            'learning_rate': []
+        })
+        
+        print(f"✓ Resumed from epoch {checkpoint['epoch']} (will start at epoch {self.start_epoch})")
+        print(f"  Best loss so far: {self.best_loss:.4f}")
+
     def train(self):
         """Main training loop"""
         print("\n" + "="*70)
@@ -377,14 +409,16 @@ class SpriteTrainer:
         start_time = time.time()
         
         for epoch in range(self.start_epoch, self.config.EPOCHS):
+            self.current_epoch = epoch
             epoch_start = time.time()
             
             # Train
             train_loss = self.train_epoch(epoch)
             
             # Validate
-            if epoch % self.config.VALIDATE_FREQ == 0:
+            if (epoch + 1) % self.config.VALIDATE_FREQ == 0:
                 val_loss = self.validate(epoch)
+
                 
                 # Check if best model
                 is_best = val_loss < self.best_loss
@@ -402,12 +436,14 @@ class SpriteTrainer:
                         break
                 
                 # Save checkpoint
-                if epoch % self.config.SAVE_FREQ == 0 or is_best:
+                if (epoch + 1) % self.config.SAVE_FREQ == 0 or is_best:
                     self.save_checkpoint(epoch, is_best)
+
             else:
                 # Just save periodically even without validation
-                if epoch % self.config.SAVE_FREQ == 0:
+                if (epoch + 1) % self.config.SAVE_FREQ == 0:
                     self.save_checkpoint(epoch, False)
+
             
             # Update learning rate
             if self.scheduler:
@@ -461,8 +497,10 @@ def main():
     except KeyboardInterrupt:
         print("\n\n⚠ Training interrupted by user")
         print("Saving current state...")
-        trainer.save_checkpoint(trainer.start_epoch, False)
+        # 'epoch' variable from the training loop contains current epoch
+        trainer.save_checkpoint(epoch, False)
         print("✓ State saved. You can resume training later.")
+
     except Exception as e:
         print(f"\n\n✗ Error during training: {e}")
         import traceback
