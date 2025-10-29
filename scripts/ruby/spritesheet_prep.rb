@@ -1,20 +1,21 @@
 #!/usr/bin/env ruby
 # spritesheet_prep.rb
 # Replaces transparent pixels in PNG spritesheets with unique dark colors
+# NEW: --fixup flag to replace transparency with magenta in *_45deg.png files
 
 require 'optparse'
 require 'fileutils'
 require 'set'
 
 class SpritesheetPrepper
-  SUFFIX = "-processed"  # Still used for temp files
+  SUFFIX = "-processed" # Still used for temp files
   
   # Dark color range: RGB values 0-80 for darker spectrum
   DARK_COLOR_MAX = 80
   
   # Color scheme generators
   COLOR_SCHEMES = {
-    magenta: ->(index) { 
+    magenta: ->(index) {
       # Magenta: Higher red and blue, lower green (more visible)
       base = 10 + (index * 4) % (DARK_COLOR_MAX - 10)
       r = base + 10
@@ -44,8 +45,9 @@ class SpritesheetPrepper
     }
   }
   
-  def initialize(color_scheme = :dark)
+  def initialize(color_scheme = :dark, fixup_mode = false)
     @color_scheme = color_scheme
+    @fixup_mode = fixup_mode
     @stats = {
       files_processed: 0,
       files_skipped: 0,
@@ -56,8 +58,15 @@ class SpritesheetPrepper
   
   def run(options)
     puts "=" * 70
-    puts "Spritesheet Transparency Replacement Tool"
-    puts "Color Scheme: #{@color_scheme.to_s.capitalize}"
+    
+    if @fixup_mode
+      puts "Spritesheet Fixup Tool (45-degree rotation artifacts)"
+      puts "Mode: Replace transparency with MAGENTA"
+    else
+      puts "Spritesheet Transparency Replacement Tool"
+      puts "Color Scheme: #{@color_scheme.to_s.capitalize}"
+    end
+    
     puts "=" * 70
     puts
     
@@ -69,7 +78,11 @@ class SpritesheetPrepper
     files = collect_files(options)
     
     if files.empty?
-      puts "No PNG files found to process."
+      if @fixup_mode
+        puts "No *_45deg.png files found to fix."
+      else
+        puts "No PNG files found to process."
+      end
       return
     end
     
@@ -78,7 +91,13 @@ class SpritesheetPrepper
     
     files.each_with_index do |file, index|
       puts "[#{index + 1}/#{files.length}] Processing: #{File.basename(file)}"
-      process_file(file)
+      
+      if @fixup_mode
+        process_fixup_file(file)
+      else
+        process_file(file)
+      end
+      
       puts
     end
     
@@ -93,23 +112,93 @@ class SpritesheetPrepper
     if options[:image]
       if File.exist?(options[:image])
         if File.extname(options[:image]).downcase == ".png"
-          files << options[:image]
+          # In fixup mode, verify filename ends with _45deg.png
+          if @fixup_mode
+            if options[:image] =~ /_45deg\.png$/i
+              files << options[:image]
+            else
+              abort "ERROR: In fixup mode, file must end with _45deg.png: #{options[:image]}"
+            end
+          else
+            files << options[:image]
+          end
         else
           abort "ERROR: File must be a PNG image: #{options[:image]}"
         end
       else
         abort "ERROR: File not found: #{options[:image]}"
       end
+      
     elsif options[:dir]
       if Dir.exist?(options[:dir])
-        files = Dir.glob(File.join(options[:dir], "*.png"))
-        # No longer skip processed files since we overwrite originals
+        if @fixup_mode
+          # Only collect *_45deg.png files
+          files = Dir.glob(File.join(options[:dir], "*_45deg.png"))
+        else
+          files = Dir.glob(File.join(options[:dir], "*.png"))
+          # No longer skip processed files since we overwrite originals
+        end
       else
         abort "ERROR: Directory not found: #{options[:dir]}"
       end
     end
     
     files
+  end
+  
+  # NEW: Process file in fixup mode (replace transparency with magenta)
+  def process_fixup_file(input_file)
+    temp_output = nil
+    
+    begin
+      # Check if file is valid PNG
+      unless valid_png?(input_file)
+        raise "File is not a valid PNG image"
+      end
+      
+      # Check if image has transparency
+      unless has_transparency?(input_file)
+        puts "  ⚠ SKIPPED: No transparent pixels found"
+        @stats[:files_skipped] += 1
+        return
+      end
+      
+      # Create temporary output filename
+      temp_output = generate_temp_filename(input_file)
+      
+      # Replace transparent pixels with magenta
+      puts "  → Replacing transparent pixels with MAGENTA..."
+      replace_transparency_with_magenta(input_file, temp_output)
+      
+      # Verify temp output was created
+      unless File.exist?(temp_output)
+        raise "Temporary output file was not created"
+      end
+      
+      # Replace original with processed version
+      puts "  → Saving to original filename..."
+      FileUtils.mv(temp_output, input_file)
+      temp_output = nil # Clear since we've moved it
+      
+      puts "  ✓ SUCCESS: Fixed #{File.basename(input_file)}"
+      @stats[:files_processed] += 1
+      
+    rescue => e
+      puts "  ✗ ERROR: #{e.message}"
+      @stats[:files_errored] += 1
+      @stats[:errors] << { file: File.basename(input_file), error: e.message }
+      
+      # Clean up temp file if it exists
+      File.delete(temp_output) if temp_output && File.exist?(temp_output)
+    end
+  end
+  
+  # NEW: Replace fully transparent pixels with magenta (technique from make_data.rb)
+  def replace_transparency_with_magenta(input_file, output_file)
+    # Using the technique from make_data.rb for rotation background fill
+    # -background magenta: Fill color for transparent areas
+    # -alpha remove: Flatten alpha channel using background color
+    exec_magick("magick \"#{input_file}\" -background magenta -alpha remove \"#{output_file}\"")
   end
   
   def process_file(input_file)
@@ -159,7 +248,7 @@ class SpritesheetPrepper
       # Replace original with processed version
       puts "  → Saving to original filename..."
       FileUtils.mv(temp_output, input_file)
-      temp_output = nil  # Clear since we've moved it
+      temp_output = nil # Clear since we've moved it
       
       puts "  ✓ SUCCESS: Processed #{File.basename(input_file)}"
       @stats[:files_processed] += 1
@@ -368,7 +457,11 @@ class SpritesheetPrepper
     end
     
     if @stats[:files_processed] > 0
-      puts "✓ Processing complete! Files have been updated in-place."
+      if @fixup_mode
+        puts "✓ Fixup complete! Files have been updated with magenta backgrounds."
+      else
+        puts "✓ Processing complete! Files have been updated in-place."
+      end
     end
     puts "=" * 70
   end
@@ -382,6 +475,7 @@ end
 # Parse command line options
 options = {}
 color_scheme = :dark  # Default
+fixup_mode = false
 
 OptionParser.new do |opts|
   opts.banner = "Usage: ruby spritesheet_prep.rb [options]"
@@ -400,7 +494,14 @@ OptionParser.new do |opts|
   end
   
   opts.separator ""
-  opts.separator "Color Scheme (mutually exclusive, optional):"
+  opts.separator "Modes:"
+  
+  opts.on("--fixup", "Fixup mode: Replace transparency with MAGENTA in *_45deg.png files") do
+    fixup_mode = true
+  end
+  
+  opts.separator ""
+  opts.separator "Color Scheme (mutually exclusive, optional, ignored in fixup mode):"
   
   opts.on("--magenta", "Use magenta-biased dark colors (higher R+B, lower G)") do
     color_scheme = :magenta
@@ -419,6 +520,16 @@ OptionParser.new do |opts|
   
   opts.on("-h", "--help", "Show this help message") do
     puts opts
+    puts ""
+    puts "Examples:"
+    puts "  # Normal mode - process all PNGs with dark colors"
+    puts "  ruby spritesheet_prep.rb --dir E:\\sprite-data\\raw"
+    puts ""
+    puts "  # Fixup mode - fix all *_45deg.png files with magenta"
+    puts "  ruby spritesheet_prep.rb --fixup --dir E:\\sprite-data\\raw"
+    puts ""
+    puts "  # Fixup single file"
+    puts "  ruby spritesheet_prep.rb --fixup --image E:\\sprite-data\\raw\\sprite_45deg.png"
     exit
   end
 end.parse!
@@ -432,12 +543,14 @@ unless options[:image] || options[:dir]
   abort "ERROR: Must specify either --image or --dir.\nUse --help for usage information."
 end
 
-# Validate mutually exclusive color scheme options
-color_flags = [options[:magenta], options[:cyan], options[:gray]].compact
-if color_flags.length > 1
-  abort "ERROR: Color scheme options (--magenta, --cyan, --gray) are mutually exclusive. Use only one."
+# Validate mutually exclusive color scheme options (ignored in fixup mode)
+unless fixup_mode
+  color_flags = [options[:magenta], options[:cyan], options[:gray]].compact
+  if color_flags.length > 1
+    abort "ERROR: Color scheme options (--magenta, --cyan, --gray) are mutually exclusive. Use only one."
+  end
 end
 
 # Run the processor
-prepper = SpritesheetPrepper.new(color_scheme)
+prepper = SpritesheetPrepper.new(color_scheme, fixup_mode)
 prepper.run(options)
