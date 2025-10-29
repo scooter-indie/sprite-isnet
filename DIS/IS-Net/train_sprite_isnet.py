@@ -497,8 +497,8 @@ def main():
     except KeyboardInterrupt:
         print("\n\n⚠ Training interrupted by user")
         print("Saving current state...")
-        # 'epoch' variable from the training loop contains current epoch
-        trainer.save_checkpoint(epoch, False)
+        trainer.save_checkpoint(trainer.current_epoch, False)
+        print("✓ State saved. You can resume training later.")
         print("✓ State saved. You can resume training later.")
 
     except Exception as e:
