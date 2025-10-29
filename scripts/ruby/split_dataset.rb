@@ -1,12 +1,12 @@
 #!/usr/bin/env ruby
-# split_train_data.rb - Split existing train data into train/valid/test sets
+# split_dataset.rb - Split existing train data into train/valid/test sets
 # Works with data already in train/ folder
 
 require 'fileutils'
 
 class TrainDataSplitter
   def initialize(data_root, train_ratio: 0.70, valid_ratio: 0.15, test_ratio: 0.15, seed: 42)
-    @data_root = data_root
+    @data_root = File.expand_path(data_root)  # Normalize path
     @train_ratio = train_ratio
     @valid_ratio = valid_ratio
     @test_ratio = test_ratio
@@ -48,15 +48,26 @@ class TrainDataSplitter
       exit 1
     end
     
-    # Get all images from train directory
-    image_files = Dir.glob(File.join(@source_images, '*.{png,jpg,jpeg,PNG,JPG,JPEG}'), File::FNM_EXTGLOB).sort
+    # Get all images from train directory - FIXED
+    puts "Scanning: #{@source_images}"
     
-    puts "Source: #{@source_images}"
+    # Use Dir.entries which is more reliable on Windows
+    all_entries = Dir.entries(@source_images).reject { |f| f == '.' || f == '..' }
+    
+    image_files = all_entries.select do |filename|
+      filename.match?(/\.(png|jpg|jpeg)$/i)
+    end.map do |filename|
+      File.join(@source_images, filename)
+    end.sort
+    
     puts "Found #{image_files.length} images"
     puts ""
     
     if image_files.empty?
       puts "✗ No images found in source directory"
+      puts "  Checked: #{@source_images}"
+      puts "  Total entries: #{all_entries.length}"
+      puts "  First 5 entries: #{all_entries.first(5).join(', ')}"
       exit 1
     end
     
@@ -64,6 +75,7 @@ class TrainDataSplitter
     valid_pairs = []
     missing_masks = []
     
+    puts "Checking for corresponding masks..."
     image_files.each do |img_path|
       basename = File.basename(img_path, File.extname(img_path))
       mask_path = File.join(@source_masks, "#{basename}.png")
@@ -88,6 +100,7 @@ class TrainDataSplitter
     end
     
     puts "Valid image/mask pairs: #{valid_pairs.length}"
+    puts ""
     
     if valid_pairs.empty?
       puts "✗ No valid image/mask pairs found"
@@ -95,13 +108,14 @@ class TrainDataSplitter
     end
     
     # Check if we have enough samples
-    if valid_pairs.length < 10
-      puts "⚠ Warning: Very small dataset (#{valid_pairs.length} samples)"
-      puts "  Consider having at least 50-100 samples for training"
-      print "Continue anyway? (y/n): "
-      response = gets.chomp.downcase
-      exit 0 unless response == 'y'
-    end
+	if valid_pairs.length < 10
+	  puts "⚠ Warning: Very small dataset (#{valid_pairs.length} samples)"
+	  puts "  Consider having at least 50-100 samples for training"
+	  print "Continue anyway? (y/n): "
+	  response = STDIN.gets.chomp.downcase  # ← FIXED
+	  exit 0 unless response == 'y'
+	end
+
     
     # Shuffle with seed for reproducibility
     srand(@seed)
@@ -113,7 +127,6 @@ class TrainDataSplitter
     valid_count = (total * @valid_ratio).round
     test_count = total - train_count - valid_count
     
-    puts ""
     puts "Split ratios:"
     puts "  Training:   #{train_count} samples (#{(@train_ratio * 100).round(1)}%)"
     puts "  Validation: #{valid_count} samples (#{(@valid_ratio * 100).round(1)}%)"
@@ -121,12 +134,13 @@ class TrainDataSplitter
     puts ""
     
     # Confirmation
-    print "Proceed with split? This will move files! (y/n): "
-    response = gets.chomp.downcase
-    unless response == 'y'
-      puts "Cancelled."
-      exit 0
-    end
+	print "Proceed with split? This will move files! (y/n): "
+	response = STDIN.gets.chomp.downcase  # ← FIXED
+	unless response == 'y'
+	  puts "Cancelled."
+	  exit 0
+	end
+
     
     # Split data
     train_pairs = valid_pairs[0...train_count]
@@ -199,7 +213,7 @@ if __FILE__ == $0
   }
   
   OptionParser.new do |opts|
-    opts.banner = "Usage: ruby split_train_data.rb [options] <data_root>"
+    opts.banner = "Usage: ruby split_dataset.rb [options] <data_root>"
     
     opts.on("--train RATIO", Float, "Training ratio (default: 0.70)") do |v|
       options[:train] = v
@@ -221,7 +235,7 @@ if __FILE__ == $0
       puts opts
       puts ""
       puts "Example:"
-      puts "  ruby split_train_data.rb E:\\Projects\\sprite-data"
+      puts "  ruby split_dataset.rb E:\\Projects\\sprite-data"
       puts ""
       puts "This will:"
       puts "  1. Read all files from train/images and train/masks"
@@ -237,7 +251,7 @@ if __FILE__ == $0
   if ARGV.length < 1
     puts "Error: Missing required argument <data_root>"
     puts ""
-    puts "Usage: ruby split_train_data.rb [options] <data_root>"
+    puts "Usage: ruby split_dataset.rb [options] <data_root>"
     puts "Run with -h for help"
     exit 1
   end

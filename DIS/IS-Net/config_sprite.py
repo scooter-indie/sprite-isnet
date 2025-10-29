@@ -28,8 +28,8 @@ class SpriteConfig:
     # ===== Training Hyperparameters =====
     BATCH_SIZE = 4  # Reduce to 2 if GPU memory issues
     NUM_WORKERS = 4  # Number of data loading workers
-    EPOCHS = 400
-    LEARNING_RATE = 5e-5
+    EPOCHS = 300
+    LEARNING_RATE = 1e-3
     WEIGHT_DECAY = 0.0
     
     # Image settings

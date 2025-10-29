@@ -235,23 +235,24 @@ class SpriteTrainer:
             # Forward pass
             self.optimizer.zero_grad()
             outputs = self.model(images)
-            
-            # IS-Net outputs multiple side outputs for deep supervision
-            # Calculate loss for all outputs
-            if isinstance(outputs, (list, tuple)):
-                # Main output (last in list)
-                main_loss = self.criterion(outputs[-1], masks)
+
+            # IS-Net outputs tuple: (predictions_list, features_list)
+            if isinstance(outputs, tuple):
+                preds = outputs[0]  # Get predictions list
+                
+                # Main output (first in list is the main prediction)
+                main_loss = self.criterion(preds[0], masks)
                 
                 # Side outputs (intermediate supervision)
                 side_loss = 0
-                for side_output in outputs[:-1]:
-                    side_loss += self.criterion(side_output, masks)
+                for side_pred in preds[1:]:
+                    side_loss += self.criterion(side_pred, masks)
                 
                 # Combined loss
                 loss = main_loss + 0.3 * side_loss
             else:
                 loss = self.criterion(outputs, masks)
-            
+
             # Backward pass
             loss.backward()
             
@@ -306,10 +307,12 @@ class SpriteTrainer:
                 
                 outputs = self.model(images)
                 
-                # Use final output for validation
-                if isinstance(outputs, (list, tuple)):
-                    outputs = outputs[-1]
-                
+               # Use final output for validation
+                if isinstance(outputs, tuple):
+                    outputs = outputs[0][0]  # Get first prediction from tuple
+                elif isinstance(outputs, list):
+                    outputs = outputs[0]
+
                 loss = self.criterion(outputs, masks)
                 val_loss += loss.item()
                 

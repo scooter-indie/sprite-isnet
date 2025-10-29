@@ -146,10 +146,11 @@ def create_sprite_dataloaders(train_img_dir, train_mask_dir,
 def test_dataset():
     """Test dataset loading"""
     dataset = SpriteDataset(
-        r'E:\sprite-data\train\images',
-        r'E:\sprite-data\train\masks',
+        r'E:\Projects\sprite-data\train\images',
+        r'E:\Projects\sprite-data\train\masks',
         target_size=1024
     )
+
     
     if len(dataset) > 0:
         img, mask, name = dataset[0]
